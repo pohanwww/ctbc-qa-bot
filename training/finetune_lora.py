@@ -315,7 +315,7 @@ def train(config: TrainingConfig) -> None:
         seed=config.seed,
         report_to="wandb" if config.wandb_project else "none",
         run_name=config.wandb_run_name,
-        max_seq_length=config.max_seq_length,
+        max_length=config.max_seq_length,
         dataset_text_field="text",
         packing=False,
     )
