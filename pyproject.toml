@@ -1,0 +1,113 @@
+[project]
+name = "ctbc-qa-bot"
+version = "0.1.0"
+description = "CLI-based English customer service chatbot for CTBC Bank with RAG and fine-tuning capabilities"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+keywords = ["chatbot", "langchain", "rag", "llm", "customer-service", "ctbc"]
+
+dependencies = [
+    # LangChain ecosystem
+    "langchain>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-huggingface>=0.1.0",
+
+    # LLM & Embeddings
+    "transformers>=4.45.0",
+    "torch>=2.0.0",
+    "sentence-transformers>=3.0.0",
+    "accelerate>=1.0.0",
+
+    # Vector store
+    "faiss-cpu>=1.8.0",
+
+    # Web scraping
+    "beautifulsoup4>=4.12.0",
+    "requests>=2.31.0",
+    "lxml>=5.0.0",
+    "playwright>=1.49.0",
+
+    # Configuration & utilities
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",  # For better CLI output
+]
+
+[project.optional-dependencies]
+# Fine-tuning dependencies (install with: uv pip install -e ".[training]")
+training = [
+    "peft>=0.13.0",
+    "bitsandbytes>=0.44.0",
+    "datasets>=3.0.0",
+    "trl>=0.12.0",
+    "wandb>=0.18.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+# CLI entrypoints
+ctbc-chat = "src.app.cli_chat:main"
+ctbc-scrape = "scripts.scrape_ctbc_faq:main"
+ctbc-index = "scripts.build_faiss_index:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# Include all Python files
+include = ["*.py", "*.pyi"]
+# Exclude common directories
+exclude = [
+    ".venv",
+    "__pycache__",
+    ".git",
+    "artifacts",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "training", "scripts"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
