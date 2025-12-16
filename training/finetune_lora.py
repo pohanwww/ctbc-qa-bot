@@ -336,7 +336,7 @@ def train(config: TrainingConfig) -> None:
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     # Train
