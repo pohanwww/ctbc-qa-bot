@@ -219,6 +219,7 @@ def setup_model_and_tokenizer(config: TrainingConfig) -> tuple[Any, Any]:
         device_map="auto",
         trust_remote_code=config.trust_remote_code,
         token=config.hf_token,
+        torch_dtype=torch.float16,  # Force float16 for T4 compatibility
     )
 
     # Prepare for k-bit training if quantized

@@ -62,7 +62,7 @@ eval_steps: 100
 # Precision & Optimization
 # ------------------------
 seed: 42
-fp16: true
+fp16: false  # Disabled for T4 compatibility
 bf16: false  # Set to true if using A100 or newer GPU
 gradient_checkpointing: true
 
