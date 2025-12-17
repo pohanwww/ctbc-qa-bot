@@ -1,17 +1,22 @@
 """
 CLI Chat Interface for CTBC QA Bot.
 
-Provides a simple REPL (Read-Eval-Print Loop) interface for interacting
-with the CTBC customer service chatbot.
+Provides a REPL interface with three response modes:
+- Base: Pure Qwen3 response
+- RAG: Qwen3 + RAG retrieval
+- Fine-tuned RAG: Fine-tuned Qwen3 + RAG
 """
 
+import argparse
 import sys
+from pathlib import Path
 from typing import NoReturn
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.table import Table
 
 from src.app.config import AppConfig, get_config
 from src.chains.chatbot import CTBCChatbot
@@ -21,22 +26,25 @@ from src.rag.retriever import FAQRetriever
 console = Console()
 
 
-def print_welcome_message() -> None:
+def print_welcome_message(compare_mode: bool) -> None:
     """Print the welcome message and instructions."""
-    welcome_text = """
+    mode_text = "**Compare Mode**: Showing all 3 response types" if compare_mode else "**Single Mode**: RAG responses only"
+    
+    welcome_text = f"""
 # Welcome to CTBC Bank Customer Service
 
-I'm your AI assistant, ready to help you with questions about CTBC Bank's products and services.
+I'm your AI assistant, ready to help you with questions about CTBC Bank.
+
+{mode_text}
 
 **Commands:**
-- Type your question and press Enter to chat
-- Type `exit` or `quit` to end the conversation
-- Type `clear` to clear conversation history
-- Type `help` to see this message again
-
-**Note:** My knowledge about CTBC Bank comes from the official FAQ. For specific account inquiries or transactions, please contact CTBC Bank directly.
+- Type your question and press Enter
+- `exit` / `quit` - End conversation
+- `clear` - Clear conversation history
+- `compare` - Toggle compare mode (show all 3 responses)
+- `help` - Show this message
     """
-    console.print(Panel(Markdown(welcome_text), title="CTBC QA Bot", border_style="blue"))
+    console.print(Panel(Markdown(welcome_text), title="🏦 CTBC QA Bot", border_style="blue"))
 
 
 def print_help() -> None:
@@ -44,37 +52,99 @@ def print_help() -> None:
     help_text = """
 **Available Commands:**
 - `exit` / `quit` - End the conversation
-- `clear` - Clear conversation history and start fresh
+- `clear` - Clear conversation history
+- `compare` - Toggle compare mode (all 3 responses)
 - `help` - Show this help message
 
-**Tips:**
-- Ask questions in English for best results
-- Be specific about what you want to know
-- If I don't have the information, I'll suggest contacting CTBC Bank directly
+**Response Modes (in compare mode):**
+- 🔵 **Base**: Pure Qwen3 (no FAQ knowledge)
+- 🟢 **RAG**: Qwen3 + FAQ retrieval
+- 🟣 **Fine-tuned + RAG**: Fine-tuned Qwen3 + FAQ retrieval
     """
     console.print(Panel(Markdown(help_text), title="Help", border_style="green"))
 
 
-def initialize_chatbot(config: AppConfig) -> CTBCChatbot:
+def print_comparison_responses(responses: dict[str, str]) -> None:
+    """Print responses from all three modes in a comparison format."""
+    
+    # Base response
+    console.print(Panel(
+        responses["base"],
+        title="🔵 Base Qwen3 (No RAG)",
+        border_style="blue",
+        padding=(1, 2),
+    ))
+    
+    # RAG response
+    console.print(Panel(
+        responses["rag"],
+        title="🟢 Qwen3 + RAG",
+        border_style="green",
+        padding=(1, 2),
+    ))
+    
+    # Fine-tuned RAG response
+    finetuned_response = responses["finetuned_rag"]
+    if finetuned_response == "[Fine-tuned model not loaded]":
+        console.print(Panel(
+            "[dim]Fine-tuned model not available. Run fine-tuning first.[/dim]",
+            title="🟣 Fine-tuned Qwen3 + RAG",
+            border_style="magenta",
+            padding=(1, 2),
+        ))
+    else:
+        console.print(Panel(
+            finetuned_response,
+            title="🟣 Fine-tuned Qwen3 + RAG",
+            border_style="magenta",
+            padding=(1, 2),
+        ))
+
+
+def initialize_chatbot(
+    config: AppConfig,
+    load_finetuned: bool = False,
+    lora_path: str | None = None,
+) -> CTBCChatbot:
     """
     Initialize the chatbot with all required components.
 
     Args:
         config: Application configuration
+        load_finetuned: Whether to load the fine-tuned model
+        lora_path: Custom path to LoRA adapter
 
     Returns:
         Initialized CTBCChatbot instance
     """
     console.print("[yellow]Initializing chatbot components...[/yellow]")
 
-    # Load LLM
-    console.print("  [dim]Loading language model...[/dim]")
-    llm = load_llm(
+    # Load base LLM
+    console.print("  [dim]Loading base language model...[/dim]")
+    base_llm = load_llm(
         model_id=config.model.model_id,
         device=config.model.device,
-        lora_adapter_path=config.model.lora_adapter_path,
         hf_token=config.model.hf_token,
     )
+
+    # Load fine-tuned LLM if requested
+    finetuned_llm = None
+    if load_finetuned:
+        adapter_path = lora_path or config.model.lora_adapter_path
+        if adapter_path and Path(adapter_path).exists():
+            console.print(f"  [dim]Loading fine-tuned model from {adapter_path}...[/dim]")
+            try:
+                finetuned_llm = load_llm(
+                    model_id=config.model.model_id,
+                    device=config.model.device,
+                    lora_adapter_path=adapter_path,
+                    hf_token=config.model.hf_token,
+                )
+                console.print("  [green]✓ Fine-tuned model loaded[/green]")
+            except Exception as e:
+                console.print(f"  [red]✗ Failed to load fine-tuned model: {e}[/red]")
+        else:
+            console.print("  [yellow]⚠ Fine-tuned model path not found, skipping[/yellow]")
 
     # Load RAG retriever
     console.print("  [dim]Loading RAG retriever...[/dim]")
@@ -85,26 +155,26 @@ def initialize_chatbot(config: AppConfig) -> CTBCChatbot:
     )
 
     # Create chatbot
-    console.print("  [dim]Setting up chat chain...[/dim]")
+    console.print("  [dim]Building LCEL chains...[/dim]")
     chatbot = CTBCChatbot(
-        llm=llm,
+        llm=base_llm,
         retriever=retriever,
-        max_new_tokens=config.inference.max_new_tokens,
-        temperature=config.inference.temperature,
+        finetuned_llm=finetuned_llm,
     )
 
     console.print("[green]✓ Chatbot ready![/green]\n")
     return chatbot
 
 
-def run_chat_loop(chatbot: CTBCChatbot) -> NoReturn:
+def run_chat_loop(chatbot: CTBCChatbot, compare_mode: bool = False) -> NoReturn:
     """
     Run the main chat loop.
 
     Args:
         chatbot: Initialized CTBCChatbot instance
+        compare_mode: Whether to show all three response modes
     """
-    print_welcome_message()
+    print_welcome_message(compare_mode)
 
     while True:
         try:
@@ -130,12 +200,21 @@ def run_chat_loop(chatbot: CTBCChatbot) -> NoReturn:
                 print_help()
                 continue
 
-            # Get response from chatbot
-            with console.status("[bold green]Thinking...", spinner="dots"):
-                response = chatbot.chat(user_input)
+            if user_input.lower() == "compare":
+                compare_mode = not compare_mode
+                status = "enabled" if compare_mode else "disabled"
+                console.print(f"[yellow]Compare mode {status}[/yellow]")
+                continue
 
-            # Print response
-            console.print(f"\n[bold green]Bot[/bold green]: {response}")
+            # Get response(s) from chatbot
+            if compare_mode:
+                with console.status("[bold green]Generating all 3 responses...", spinner="dots"):
+                    responses = chatbot.chat_all(user_input)
+                print_comparison_responses(responses)
+            else:
+                with console.status("[bold green]Thinking...", spinner="dots"):
+                    response = chatbot.chat(user_input, mode="rag")
+                console.print(f"\n[bold green]Bot[/bold green]: {response}")
 
         except KeyboardInterrupt:
             console.print("\n\n[yellow]Interrupted. Type 'exit' to quit.[/yellow]")
@@ -148,6 +227,24 @@ def run_chat_loop(chatbot: CTBCChatbot) -> NoReturn:
 
 def main() -> None:
     """Main entry point for the CLI chat application."""
+    parser = argparse.ArgumentParser(description="CTBC QA Bot CLI")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Start in compare mode (show all 3 response types)",
+    )
+    parser.add_argument(
+        "--load-finetuned",
+        action="store_true",
+        help="Load fine-tuned model if available",
+    )
+    parser.add_argument(
+        "--lora-path",
+        type=str,
+        help="Path to LoRA adapter (overrides config)",
+    )
+    args = parser.parse_args()
+
     try:
         # Load configuration
         config = get_config()
@@ -155,9 +252,15 @@ def main() -> None:
         # Ensure directories exist
         config.ensure_directories()
 
-        # Initialize and run chatbot
-        chatbot = initialize_chatbot(config)
-        run_chat_loop(chatbot)
+        # Initialize chatbot
+        chatbot = initialize_chatbot(
+            config,
+            load_finetuned=args.load_finetuned or args.compare,
+            lora_path=args.lora_path,
+        )
+
+        # Run chat loop
+        run_chat_loop(chatbot, compare_mode=args.compare)
 
     except Exception as e:
         console.print(f"[red]Failed to initialize chatbot: {e}[/red]")
