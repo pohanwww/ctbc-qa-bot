@@ -73,7 +73,7 @@ class InferenceConfig:
     """Configuration for model inference."""
 
     # Maximum tokens to generate
-    max_new_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_NEW_TOKENS", "512")))
+    max_new_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_NEW_TOKENS", "2048")))
 
     # Temperature for generation
     temperature: float = field(default_factory=lambda: float(os.getenv("TEMPERATURE", "0.7")))

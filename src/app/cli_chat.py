@@ -145,6 +145,7 @@ def initialize_chatbot(
         model_id=config.model.model_id,
         device=config.model.device,
         hf_token=config.model.hf_token,
+        max_new_tokens=config.inference.max_new_tokens,
     )
 
     # Load fine-tuned LLM if requested
@@ -165,6 +166,7 @@ def initialize_chatbot(
                     device=config.model.device,
                     lora_adapter_path=adapter_path,
                     hf_token=config.model.hf_token,
+                    max_new_tokens=config.inference.max_new_tokens,
                 )
                 console.print("  [green]✓ Fine-tuned model loaded[/green]")
             except Exception as e:
