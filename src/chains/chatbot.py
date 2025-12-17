@@ -11,10 +11,10 @@ Implements the main chatbot logic using LangChain LCEL, combining:
 import logging
 from typing import Any
 
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from src.llm.loader import LLMWrapper
 from src.rag.retriever import FAQRetriever
@@ -104,22 +104,26 @@ class CTBCChatbot:
 
     def _build_chains(self) -> None:
         """Build LangChain LCEL chains for different modes."""
-        
+
         # Output parser
         output_parser = StrOutputParser()
 
         # ========== Base Chain (No RAG) ==========
-        base_prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT_BASE),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{question}"),
-        ])
+        base_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", SYSTEM_PROMPT_BASE),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{question}"),
+            ]
+        )
 
         # Chain: prompt | llm | parser
         self.base_chain = (
             {
                 "question": RunnablePassthrough(),
-                "history": RunnableLambda(lambda _: self.conversation_history[-self.max_history_turns * 2:]),
+                "history": RunnableLambda(
+                    lambda _: self.conversation_history[-self.max_history_turns * 2 :]
+                ),
             }
             | base_prompt
             | RunnableLambda(lambda x: self._format_prompt_for_model(x))
@@ -129,18 +133,24 @@ class CTBCChatbot:
         )
 
         # ========== RAG Chain ==========
-        rag_prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT_RAG),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{question}"),
-        ])
+        rag_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", SYSTEM_PROMPT_RAG),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{question}"),
+            ]
+        )
 
         # Chain: retrieve context | prompt | llm | parser
         self.rag_chain = (
             {
-                "context": RunnableLambda(lambda x: self.retriever.get_relevant_context(x["question"])),
+                "context": RunnableLambda(
+                    lambda x: self.retriever.get_relevant_context(x["question"])
+                ),
                 "question": lambda x: x["question"],
-                "history": RunnableLambda(lambda _: self.conversation_history[-self.max_history_turns * 2:]),
+                "history": RunnableLambda(
+                    lambda _: self.conversation_history[-self.max_history_turns * 2 :]
+                ),
             }
             | rag_prompt
             | RunnableLambda(lambda x: self._format_prompt_for_model(x))
@@ -153,9 +163,13 @@ class CTBCChatbot:
         if self.finetuned_llm:
             self.finetuned_rag_chain = (
                 {
-                    "context": RunnableLambda(lambda x: self.retriever.get_relevant_context(x["question"])),
+                    "context": RunnableLambda(
+                        lambda x: self.retriever.get_relevant_context(x["question"])
+                    ),
                     "question": lambda x: x["question"],
-                    "history": RunnableLambda(lambda _: self.conversation_history[-self.max_history_turns * 2:]),
+                    "history": RunnableLambda(
+                        lambda _: self.conversation_history[-self.max_history_turns * 2 :]
+                    ),
                 }
                 | rag_prompt
                 | RunnableLambda(lambda x: self._format_prompt_for_model(x))
@@ -169,15 +183,15 @@ class CTBCChatbot:
     def _format_prompt_for_model(self, prompt_value: Any) -> str:
         """
         Format ChatPromptTemplate output to string for the model.
-        
+
         Args:
             prompt_value: The prompt value from ChatPromptTemplate
-            
+
         Returns:
             Formatted prompt string for Qwen model
         """
         messages = prompt_value.to_messages()
-        
+
         prompt_parts = []
         for msg in messages:
             if msg.type == "system":
@@ -186,7 +200,7 @@ class CTBCChatbot:
                 prompt_parts.append(f"<|im_start|>user\n{msg.content}<|im_end|>")
             elif msg.type == "ai":
                 prompt_parts.append(f"<|im_start|>assistant\n{msg.content}<|im_end|>")
-        
+
         prompt_parts.append("<|im_start|>assistant\n")
         return "\n".join(prompt_parts)
 
@@ -247,7 +261,7 @@ class CTBCChatbot:
         """
         if not self.finetuned_rag_chain:
             return "[Fine-tuned model not loaded]"
-        
+
         try:
             response = self.finetuned_rag_chain.invoke({"question": question})
             return response
@@ -265,20 +279,35 @@ class CTBCChatbot:
         Returns:
             Dictionary with responses from each mode
         """
-        responses = {
-            "base": self.chat_base(question),
-            "rag": self.chat_rag(question),
-            "finetuned_rag": self.chat_finetuned_rag(question),
-        }
-        
+        # Get responses with individual error handling
+        responses = {}
+
+        try:
+            responses["base"] = self.chat_base(question)
+        except Exception as e:
+            logger.error(f"Error getting base response: {e}")
+            responses["base"] = f"Error: {str(e)}"
+
+        try:
+            responses["rag"] = self.chat_rag(question)
+        except Exception as e:
+            logger.error(f"Error getting RAG response: {e}")
+            responses["rag"] = f"Error: {str(e)}"
+
+        try:
+            responses["finetuned_rag"] = self.chat_finetuned_rag(question)
+        except Exception as e:
+            logger.error(f"Error getting fine-tuned RAG response: {e}")
+            responses["finetuned_rag"] = f"Error: {str(e)}"
+
         # Update conversation history (use RAG response as the canonical one)
         self.conversation_history.append(HumanMessage(content=question))
         self.conversation_history.append(AIMessage(content=responses["rag"]))
-        
+
         # Trim history if too long
         if len(self.conversation_history) > self.max_history_turns * 2:
-            self.conversation_history = self.conversation_history[-self.max_history_turns * 2:]
-        
+            self.conversation_history = self.conversation_history[-self.max_history_turns * 2 :]
+
         return responses
 
     def chat(self, question: str, mode: str = "rag") -> str:
@@ -305,7 +334,7 @@ class CTBCChatbot:
 
         # Trim history
         if len(self.conversation_history) > self.max_history_turns * 2:
-            self.conversation_history = self.conversation_history[-self.max_history_turns * 2:]
+            self.conversation_history = self.conversation_history[-self.max_history_turns * 2 :]
 
         return response
 

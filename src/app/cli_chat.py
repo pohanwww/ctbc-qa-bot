@@ -9,6 +9,7 @@ Provides a REPL interface with three response modes:
 
 import argparse
 import sys
+import traceback
 from pathlib import Path
 from typing import NoReturn
 
@@ -16,9 +17,8 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.table import Table
 
-from src.app.config import AppConfig, get_config
+from src.app.config import AppConfig, get_config, get_project_root
 from src.chains.chatbot import CTBCChatbot
 from src.llm.loader import load_llm
 from src.rag.retriever import FAQRetriever
@@ -28,8 +28,12 @@ console = Console()
 
 def print_welcome_message(compare_mode: bool) -> None:
     """Print the welcome message and instructions."""
-    mode_text = "**Compare Mode**: Showing all 3 response types" if compare_mode else "**Single Mode**: RAG responses only"
-    
+    mode_text = (
+        "**Compare Mode**: Showing all 3 response types"
+        if compare_mode
+        else "**Single Mode**: RAG responses only"
+    )
+
     welcome_text = f"""
 # Welcome to CTBC Bank Customer Service
 
@@ -66,39 +70,55 @@ def print_help() -> None:
 
 def print_comparison_responses(responses: dict[str, str]) -> None:
     """Print responses from all three modes in a comparison format."""
-    
+
+    # Ensure all required keys exist
+    if "base" not in responses:
+        responses["base"] = "[Error: Base response not available]"
+    if "rag" not in responses:
+        responses["rag"] = "[Error: RAG response not available]"
+    if "finetuned_rag" not in responses:
+        responses["finetuned_rag"] = "[Error: Fine-tuned RAG response not available]"
+
     # Base response
-    console.print(Panel(
-        responses["base"],
-        title="🔵 Base Qwen3 (No RAG)",
-        border_style="blue",
-        padding=(1, 2),
-    ))
-    
+    console.print(
+        Panel(
+            responses["base"],
+            title="🔵 Base Qwen3 (No RAG)",
+            border_style="blue",
+            padding=(1, 2),
+        )
+    )
+
     # RAG response
-    console.print(Panel(
-        responses["rag"],
-        title="🟢 Qwen3 + RAG",
-        border_style="green",
-        padding=(1, 2),
-    ))
-    
+    console.print(
+        Panel(
+            responses["rag"],
+            title="🟢 Qwen3 + RAG",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+
     # Fine-tuned RAG response
     finetuned_response = responses["finetuned_rag"]
     if finetuned_response == "[Fine-tuned model not loaded]":
-        console.print(Panel(
-            "[dim]Fine-tuned model not available. Run fine-tuning first.[/dim]",
-            title="🟣 Fine-tuned Qwen3 + RAG",
-            border_style="magenta",
-            padding=(1, 2),
-        ))
+        console.print(
+            Panel(
+                "[dim]Fine-tuned model not available. Run fine-tuning first.[/dim]",
+                title="🟣 Fine-tuned Qwen3 + RAG",
+                border_style="magenta",
+                padding=(1, 2),
+            )
+        )
     else:
-        console.print(Panel(
-            finetuned_response,
-            title="🟣 Fine-tuned Qwen3 + RAG",
-            border_style="magenta",
-            padding=(1, 2),
-        ))
+        console.print(
+            Panel(
+                finetuned_response,
+                title="🟣 Fine-tuned Qwen3 + RAG",
+                border_style="magenta",
+                padding=(1, 2),
+            )
+        )
 
 
 def initialize_chatbot(
@@ -131,6 +151,12 @@ def initialize_chatbot(
     finetuned_llm = None
     if load_finetuned:
         adapter_path = lora_path or config.model.lora_adapter_path
+        # If no path specified, try default location
+        if not adapter_path:
+            project_root = get_project_root()
+            default_path = project_root / "artifacts" / "models" / "lora_adapter" / "final"
+            if default_path.exists():
+                adapter_path = str(default_path)
         if adapter_path and Path(adapter_path).exists():
             console.print(f"  [dim]Loading fine-tuned model from {adapter_path}...[/dim]")
             try:
@@ -209,8 +235,13 @@ def run_chat_loop(chatbot: CTBCChatbot, compare_mode: bool = False) -> NoReturn:
             # Get response(s) from chatbot
             if compare_mode:
                 with console.status("[bold green]Generating all 3 responses...", spinner="dots"):
-                    responses = chatbot.chat_all(user_input)
-                print_comparison_responses(responses)
+                    try:
+                        responses = chatbot.chat_all(user_input)
+                        print_comparison_responses(responses)
+                    except Exception as e:
+                        console.print(f"\n[red]Error generating responses: {e}[/red]")
+                        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                        continue
             else:
                 with console.status("[bold green]Thinking...", spinner="dots"):
                     response = chatbot.chat(user_input, mode="rag")
