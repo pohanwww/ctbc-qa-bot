@@ -125,6 +125,7 @@ def initialize_chatbot(
     config: AppConfig,
     load_finetuned: bool = False,
     lora_path: str | None = None,
+    need_base_model: bool = True,
 ) -> CTBCChatbot:
     """
     Initialize the chatbot with all required components.
@@ -133,20 +134,12 @@ def initialize_chatbot(
         config: Application configuration
         load_finetuned: Whether to load the fine-tuned model
         lora_path: Custom path to LoRA adapter
+        need_base_model: Whether to load base model (False if only using fine-tuned model)
 
     Returns:
         Initialized CTBCChatbot instance
     """
     console.print("[yellow]Initializing chatbot components...[/yellow]")
-
-    # Load base LLM
-    console.print("  [dim]Loading base language model...[/dim]")
-    base_llm = load_llm(
-        model_id=config.model.model_id,
-        device=config.model.device,
-        hf_token=config.model.hf_token,
-        max_new_tokens=config.inference.max_new_tokens,
-    )
 
     # Load fine-tuned LLM if requested
     finetuned_llm = None
@@ -167,12 +160,34 @@ def initialize_chatbot(
                     lora_adapter_path=adapter_path,
                     hf_token=config.model.hf_token,
                     max_new_tokens=config.inference.max_new_tokens,
+                    load_in_4bit=config.model.load_in_4bit,
+                    load_in_8bit=config.model.load_in_8bit,
                 )
                 console.print("  [green]✓ Fine-tuned model loaded[/green]")
             except Exception as e:
                 console.print(f"  [red]✗ Failed to load fine-tuned model: {e}[/red]")
         else:
             console.print("  [yellow]⚠ Fine-tuned model path not found, skipping[/yellow]")
+
+    # Load base LLM only if needed (and not already loaded as fine-tuned)
+    base_llm = None
+    if need_base_model:
+        console.print("  [dim]Loading base language model...[/dim]")
+        if config.model.load_in_4bit:
+            console.print("  [dim]Using 4-bit quantization to reduce memory usage[/dim]")
+        elif config.model.load_in_8bit:
+            console.print("  [dim]Using 8-bit quantization to reduce memory usage[/dim]")
+        base_llm = load_llm(
+            model_id=config.model.model_id,
+            device=config.model.device,
+            hf_token=config.model.hf_token,
+            max_new_tokens=config.inference.max_new_tokens,
+            load_in_4bit=config.model.load_in_4bit,
+            load_in_8bit=config.model.load_in_8bit,
+        )
+    elif finetuned_llm:
+        # If only using fine-tuned model, use it as base_llm too
+        base_llm = finetuned_llm
 
     # Load RAG retriever
     console.print("  [dim]Loading RAG retriever...[/dim]")
@@ -297,11 +312,16 @@ def main() -> None:
         # Determine if fine-tuned model is needed
         needs_finetuned = args.load_finetuned or args.compare or args.mode == "finetuned_rag"
 
+        # Determine if base model is needed
+        # Base model is needed if: compare mode OR mode is base/rag (not finetuned_rag only)
+        needs_base_model = args.compare or args.mode in ["base", "rag"]
+
         # Initialize chatbot
         chatbot = initialize_chatbot(
             config,
             load_finetuned=needs_finetuned,
             lora_path=args.lora_path,
+            need_base_model=needs_base_model,
         )
 
         # Run chat loop
