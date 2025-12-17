@@ -192,7 +192,9 @@ def initialize_chatbot(
     return chatbot
 
 
-def run_chat_loop(chatbot: CTBCChatbot, compare_mode: bool = False) -> NoReturn:
+def run_chat_loop(
+    chatbot: CTBCChatbot, compare_mode: bool = False, default_mode: str = "rag"
+) -> NoReturn:
     """
     Run the main chat loop.
 
@@ -244,7 +246,7 @@ def run_chat_loop(chatbot: CTBCChatbot, compare_mode: bool = False) -> NoReturn:
                         continue
             else:
                 with console.status("[bold green]Thinking...", spinner="dots"):
-                    response = chatbot.chat(user_input, mode="rag")
+                    response = chatbot.chat(user_input, mode=default_mode)
                 console.print(f"\n[bold green]Bot[/bold green]: {response}")
 
         except KeyboardInterrupt:
@@ -274,6 +276,13 @@ def main() -> None:
         type=str,
         help="Path to LoRA adapter (overrides config)",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["base", "rag", "finetuned_rag"],
+        default="rag",
+        help="Response mode: 'base' (no RAG), 'rag' (base + RAG), 'finetuned_rag' (fine-tuned + RAG)",
+    )
     args = parser.parse_args()
 
     try:
@@ -283,15 +292,18 @@ def main() -> None:
         # Ensure directories exist
         config.ensure_directories()
 
+        # Determine if fine-tuned model is needed
+        needs_finetuned = args.load_finetuned or args.compare or args.mode == "finetuned_rag"
+
         # Initialize chatbot
         chatbot = initialize_chatbot(
             config,
-            load_finetuned=args.load_finetuned or args.compare,
+            load_finetuned=needs_finetuned,
             lora_path=args.lora_path,
         )
 
         # Run chat loop
-        run_chat_loop(chatbot, compare_mode=args.compare)
+        run_chat_loop(chatbot, compare_mode=args.compare, default_mode=args.mode)
 
     except Exception as e:
         console.print(f"[red]Failed to initialize chatbot: {e}[/red]")
