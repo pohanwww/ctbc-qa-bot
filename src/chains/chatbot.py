@@ -265,8 +265,22 @@ class CTBCChatbot:
         try:
             response = self.finetuned_rag_chain.invoke({"question": question})
             return response
+        except RuntimeError as e:
+            error_msg = str(e)
+            if "CUDA" in error_msg or "device-side assert" in error_msg:
+                logger.error(f"CUDA error in fine-tuned RAG chain: {e}")
+                logger.error(
+                    "This is often caused by tokenizer/model mismatch. "
+                    "Try using the tokenizer from the LoRA adapter directory."
+                )
+                return (
+                    "Error: CUDA device-side assert. This may be caused by tokenizer/model mismatch. "
+                    "Please check that the LoRA adapter was trained with the same base model."
+                )
+            logger.error(f"Runtime error in fine-tuned RAG chain: {e}")
+            return f"Error: {str(e)}"
         except Exception as e:
-            logger.error(f"Error in fine-tuned RAG chain: {e}")
+            logger.error(f"Error in fine-tuned RAG chain: {e}", exc_info=True)
             return f"Error: {str(e)}"
 
     def chat_all(self, question: str) -> dict[str, str]:
