@@ -250,10 +250,10 @@ def load_llm(
         model.generation_config.repetition_penalty = None
 
     # Create text generation pipeline
-    # Ensure temperature is valid and handle edge cases to prevent probability tensor errors
-    safe_temperature = max(0.1, min(temperature, 1.5)) if temperature > 0 else 0.0
-    do_sample = safe_temperature > 0
-
+    # TEMPORARY: Force greedy decoding to debug probability tensor errors
+    # This bypasses sampling entirely to isolate if issue is with sampling or tokenizer
+    logger.info("Using greedy decoding (do_sample=False) for debugging")
+    
     # Build pipeline kwargs with explicit parameters to override model defaults
     pipeline_kwargs = {
         "model": model,
@@ -261,20 +261,8 @@ def load_llm(
         "max_new_tokens": max_new_tokens,
         "return_full_text": False,
         "pad_token_id": tokenizer.pad_token_id,
+        "do_sample": False,  # Greedy decoding - no sampling
     }
-
-    if do_sample:
-        pipeline_kwargs.update(
-            {
-                "temperature": safe_temperature,
-                "do_sample": True,
-                "top_p": 0.9,  # Nucleus sampling (lowered for stability)
-                "top_k": 40,  # Limit vocabulary (lowered for stability)
-                "repetition_penalty": 1.05,  # Lower penalty to avoid extreme values
-            }
-        )
-    else:
-        pipeline_kwargs["do_sample"] = False
 
     pipe = pipeline("text-generation", **pipeline_kwargs)
 
