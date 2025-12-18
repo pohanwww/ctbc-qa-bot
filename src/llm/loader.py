@@ -249,19 +249,18 @@ def load_llm(
         model.generation_config.top_k = None
         model.generation_config.repetition_penalty = None
 
-    # Create text generation pipeline
-    # TEMPORARY: Force greedy decoding to debug probability tensor errors
-    # This bypasses sampling entirely to isolate if issue is with sampling or tokenizer
-    logger.info("Using greedy decoding (do_sample=False) for debugging")
-
-    # Build pipeline kwargs with explicit parameters to override model defaults
+    # Create text generation pipeline with sampling for more diverse outputs
     pipeline_kwargs = {
         "model": model,
         "tokenizer": tokenizer,
         "max_new_tokens": max_new_tokens,
         "return_full_text": False,
         "pad_token_id": tokenizer.pad_token_id,
-        "do_sample": False,  # Greedy decoding - no sampling
+        "do_sample": True,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "top_k": 50,
+        "repetition_penalty": 1.1,
     }
 
     pipe = pipeline("text-generation", **pipeline_kwargs)
