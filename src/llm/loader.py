@@ -223,12 +223,26 @@ def load_llm(
                 "PEFT library is required to load LoRA adapters. Install with: uv pip install peft"
             ) from e
 
+    # Disable model's generation_config defaults to avoid conflicts
+    # This prevents warnings and ensures our parameters are used
+    if hasattr(model, "generation_config"):
+        # Clear conflicting defaults to let pipeline parameters take precedence
+        model.generation_config.update(
+            {
+                "do_sample": None,
+                "temperature": None,
+                "top_p": None,
+                "top_k": None,
+                "repetition_penalty": None,
+            }
+        )
+
     # Create text generation pipeline
     # Ensure temperature is valid and handle edge cases to prevent probability tensor errors
     safe_temperature = max(0.1, min(temperature, 1.5)) if temperature > 0 else 0.0
     do_sample = safe_temperature > 0
 
-    # Build pipeline kwargs
+    # Build pipeline kwargs with explicit parameters to override model defaults
     pipeline_kwargs = {
         "model": model,
         "tokenizer": tokenizer,
@@ -242,9 +256,9 @@ def load_llm(
             {
                 "temperature": safe_temperature,
                 "do_sample": True,
-                "top_p": 0.95,  # Nucleus sampling to avoid extreme probabilities
-                "top_k": 50,  # Limit vocabulary to top-k tokens
-                "repetition_penalty": 1.1,
+                "top_p": 0.9,  # Nucleus sampling (lowered for stability)
+                "top_k": 40,  # Limit vocabulary (lowered for stability)
+                "repetition_penalty": 1.05,  # Lower penalty to avoid extreme values
             }
         )
     else:
