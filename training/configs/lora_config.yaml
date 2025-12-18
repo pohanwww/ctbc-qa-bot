@@ -3,7 +3,7 @@
 #
 # This configuration is optimized for:
 # - Qwen3-4B base model
-# - Single GPU with 16GB VRAM (e.g., T4)
+# - Single GPU with 16GB+ VRAM (L4/A100)
 # - QLoRA (4-bit quantization) for memory efficiency
 
 # Model Settings
@@ -32,18 +32,18 @@ lora_target_modules:
 # Quantization Settings (QLoRA)
 # -----------------------------
 use_4bit: true
-bnb_4bit_compute_dtype: "float16"
+bnb_4bit_compute_dtype: "bfloat16"  # Changed to bf16 for L4
 bnb_4bit_quant_type: "nf4"
 use_double_quant: true
 
 # Training Settings
 # -----------------
 output_dir: "artifacts/models/lora_adapter"
-num_train_epochs: 3
+num_train_epochs: 2  # Reduced from 3 to 2
 per_device_train_batch_size: 4
 per_device_eval_batch_size: 4
 gradient_accumulation_steps: 4  # Effective batch size = 4 * 4 = 16
-learning_rate: 0.0002  # 2e-4
+learning_rate: 0.00005  # Reduced from 2e-4 to 5e-5 to prevent NaN
 weight_decay: 0.01
 warmup_ratio: 0.03
 max_seq_length: 2048
@@ -55,15 +55,15 @@ val_data_path: "data/processed/finetune/val.jsonl"
 
 # Logging & Checkpointing
 # -----------------------
-logging_steps: 10
-save_steps: 100
-eval_steps: 100
+logging_steps: 50  # Log less frequently for speed
+save_steps: 500  # Save less frequently
+eval_steps: 500  # Eval less frequently
 
 # Precision & Optimization
 # ------------------------
 seed: 42
-fp16: false  # Disabled for T4 compatibility
-bf16: false  # Set to true if using A100 or newer GPU
+fp16: false
+bf16: true  # Enable bf16 for L4 GPU (better numerical stability)
 gradient_checkpointing: true
 
 # Weights & Biases (Optional)
