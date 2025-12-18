@@ -253,7 +253,7 @@ def load_llm(
     # TEMPORARY: Force greedy decoding to debug probability tensor errors
     # This bypasses sampling entirely to isolate if issue is with sampling or tokenizer
     logger.info("Using greedy decoding (do_sample=False) for debugging")
-    
+
     # Build pipeline kwargs with explicit parameters to override model defaults
     pipeline_kwargs = {
         "model": model,

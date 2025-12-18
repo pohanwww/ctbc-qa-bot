@@ -153,6 +153,7 @@ def initialize_chatbot(
                 adapter_path = str(default_path)
         if adapter_path and Path(adapter_path).exists():
             console.print(f"  [dim]Loading fine-tuned model from {adapter_path}...[/dim]")
+            console.print("  [dim]Using 4-bit quantization (QLoRA) to match training config...[/dim]")
             try:
                 finetuned_llm = load_llm(
                     model_id=config.model.model_id,
@@ -160,6 +161,7 @@ def initialize_chatbot(
                     lora_adapter_path=adapter_path,
                     hf_token=config.model.hf_token,
                     max_new_tokens=config.inference.max_new_tokens,
+                    load_in_4bit=True,  # Must match QLoRA training config
                 )
                 console.print("  [green]✓ Fine-tuned model loaded[/green]")
             except Exception as e:
