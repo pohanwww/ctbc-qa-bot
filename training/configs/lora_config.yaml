@@ -62,7 +62,7 @@ eval_steps: 200  # Eval every 200 steps
 # Precision & Optimization
 # ------------------------
 seed: 42
-fp16: true  # T4 uses fp16
+fp16: false  # Disable mixed precision to avoid AMP issues
 bf16: false  # T4 doesn't support bf16
 gradient_checkpointing: true
 
