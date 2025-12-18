@@ -160,8 +160,6 @@ def initialize_chatbot(
                     lora_adapter_path=adapter_path,
                     hf_token=config.model.hf_token,
                     max_new_tokens=config.inference.max_new_tokens,
-                    load_in_4bit=config.model.load_in_4bit,
-                    load_in_8bit=config.model.load_in_8bit,
                 )
                 console.print("  [green]✓ Fine-tuned model loaded[/green]")
             except Exception as e:
@@ -173,28 +171,24 @@ def initialize_chatbot(
     base_llm = None
     if need_base_model:
         console.print("  [dim]Loading base language model...[/dim]")
-        if config.model.load_in_4bit:
-            console.print("  [dim]Using 4-bit quantization to reduce memory usage[/dim]")
-        elif config.model.load_in_8bit:
-            console.print("  [dim]Using 8-bit quantization to reduce memory usage[/dim]")
         base_llm = load_llm(
             model_id=config.model.model_id,
             device=config.model.device,
             hf_token=config.model.hf_token,
             max_new_tokens=config.inference.max_new_tokens,
-            load_in_4bit=config.model.load_in_4bit,
-            load_in_8bit=config.model.load_in_8bit,
         )
     elif finetuned_llm:
         # If only using fine-tuned model, use it as base_llm too
         base_llm = finetuned_llm
 
     # Load RAG retriever
-    console.print("  [dim]Loading RAG retriever...[/dim]")
+    # Use CPU for embeddings to save GPU memory for LLM
+    console.print("  [dim]Loading RAG retriever (using CPU for embeddings)...[/dim]")
     retriever = FAQRetriever(
         index_path=config.rag.faiss_index_path,
         embedding_model_id=config.model.embedding_model_id,
         top_k=config.rag.top_k,
+        device="cpu",  # Use CPU for embeddings to save GPU memory
     )
 
     # Create chatbot
