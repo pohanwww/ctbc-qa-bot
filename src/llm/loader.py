@@ -205,17 +205,33 @@ def load_llm(
     if lora_adapter_path:
         logger.info(f"Loading LoRA adapter from {lora_adapter_path}")
         try:
+            from pathlib import Path
+
             from peft import PeftModel
 
             # Load LoRA adapter
             model = PeftModel.from_pretrained(model, lora_adapter_path)
 
-            # Note: We keep using the base model's tokenizer because:
-            # 1. LoRA adapters don't change the vocabulary
-            # 2. The model's embedding layer size matches the base tokenizer
-            # 3. Using adapter's tokenizer could cause mismatches if vocab sizes differ
-            # The tokenizer saved with the adapter is just a copy for convenience
-            logger.info("Using base model tokenizer (LoRA doesn't change vocabulary)")
+            # Try to load tokenizer from adapter path if it exists
+            # This ensures compatibility if adapter has custom tokens
+            adapter_path = Path(lora_adapter_path)
+            if (adapter_path / "tokenizer.json").exists() or (
+                adapter_path / "tokenizer_config.json"
+            ).exists():
+                logger.info("Loading tokenizer from LoRA adapter path")
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        str(adapter_path),
+                        token=hf_token,
+                        trust_remote_code=trust_remote_code,
+                    )
+                    # Ensure pad token is set
+                    if tokenizer.pad_token is None:
+                        tokenizer.pad_token = tokenizer.eos_token
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load tokenizer from adapter path, using base tokenizer: {e}"
+                    )
 
             logger.info("LoRA adapter loaded successfully")
         except ImportError as e:
