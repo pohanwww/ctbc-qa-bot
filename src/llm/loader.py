@@ -206,45 +206,51 @@ def load_llm(
         logger.info(f"Loading LoRA adapter from {lora_adapter_path}")
         try:
             from peft import PeftModel
-            from pathlib import Path
 
             # Load LoRA adapter
             model = PeftModel.from_pretrained(model, lora_adapter_path)
 
-            # Try to load tokenizer from adapter path if it exists
-            # This ensures compatibility if adapter has custom tokens
-            adapter_path = Path(lora_adapter_path)
-            if (adapter_path / "tokenizer.json").exists() or (adapter_path / "tokenizer_config.json").exists():
-                logger.info("Loading tokenizer from LoRA adapter path")
-                try:
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        str(adapter_path),
-                        token=hf_token,
-                        trust_remote_code=trust_remote_code,
-                    )
-                    # Ensure pad token is set
-                    if tokenizer.pad_token is None:
-                        tokenizer.pad_token = tokenizer.eos_token
-                except Exception as e:
-                    logger.warning(f"Failed to load tokenizer from adapter path, using base tokenizer: {e}")
+            # Note: We keep using the base model's tokenizer because:
+            # 1. LoRA adapters don't change the vocabulary
+            # 2. The model's embedding layer size matches the base tokenizer
+            # 3. Using adapter's tokenizer could cause mismatches if vocab sizes differ
+            # The tokenizer saved with the adapter is just a copy for convenience
+            logger.info("Using base model tokenizer (LoRA doesn't change vocabulary)")
 
             logger.info("LoRA adapter loaded successfully")
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "PEFT library is required to load LoRA adapters. Install with: uv pip install peft"
-            )
+            ) from e
 
     # Create text generation pipeline
-    pipe = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        do_sample=temperature > 0,
-        return_full_text=False,
-        pad_token_id=tokenizer.pad_token_id,
-    )
+    # Ensure temperature is valid and handle edge cases to prevent probability tensor errors
+    safe_temperature = max(0.1, min(temperature, 1.5)) if temperature > 0 else 0.0
+    do_sample = safe_temperature > 0
+
+    # Build pipeline kwargs
+    pipeline_kwargs = {
+        "model": model,
+        "tokenizer": tokenizer,
+        "max_new_tokens": max_new_tokens,
+        "return_full_text": False,
+        "pad_token_id": tokenizer.pad_token_id,
+    }
+
+    if do_sample:
+        pipeline_kwargs.update(
+            {
+                "temperature": safe_temperature,
+                "do_sample": True,
+                "top_p": 0.95,  # Nucleus sampling to avoid extreme probabilities
+                "top_k": 50,  # Limit vocabulary to top-k tokens
+                "repetition_penalty": 1.1,
+            }
+        )
+    else:
+        pipeline_kwargs["do_sample"] = False
+
+    pipe = pipeline("text-generation", **pipeline_kwargs)
 
     # Wrap in LangChain pipeline
     llm = HuggingFacePipeline(pipeline=pipe)
