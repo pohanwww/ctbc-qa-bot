@@ -39,14 +39,14 @@ use_double_quant: true
 # Training Settings
 # -----------------
 output_dir: "artifacts/models/lora_adapter"
-num_train_epochs: 2  # Reduced from 3 to 2
-per_device_train_batch_size: 4
-per_device_eval_batch_size: 4
-gradient_accumulation_steps: 4  # Effective batch size = 4 * 4 = 16
-learning_rate: 0.00005  # Reduced from 2e-4 to 5e-5 to prevent NaN
+num_train_epochs: 1  # Just 1 epoch for quick training
+per_device_train_batch_size: 8  # Increased from 4
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 8  # Effective batch size = 8 * 8 = 64
+learning_rate: 0.0001  # Increased slightly for faster convergence with larger batch
 weight_decay: 0.01
 warmup_ratio: 0.03
-max_seq_length: 2048
+max_seq_length: 1024  # Reduced from 2048 for faster processing
 
 # Data Paths
 # ----------
@@ -55,9 +55,9 @@ val_data_path: "data/processed/finetune/val.jsonl"
 
 # Logging & Checkpointing
 # -----------------------
-logging_steps: 50  # Log less frequently for speed
-save_steps: 500  # Save less frequently
-eval_steps: 500  # Eval less frequently
+logging_steps: 20  # Log every 20 steps
+save_steps: 200  # Save checkpoint every 200 steps
+eval_steps: 200  # Eval every 200 steps
 
 # Precision & Optimization
 # ------------------------
