@@ -243,15 +243,11 @@ def load_llm(
     # This prevents warnings and ensures our parameters are used
     if hasattr(model, "generation_config"):
         # Clear conflicting defaults to let pipeline parameters take precedence
-        model.generation_config.update(
-            {
-                "do_sample": None,
-                "temperature": None,
-                "top_p": None,
-                "top_k": None,
-                "repetition_penalty": None,
-            }
-        )
+        model.generation_config.do_sample = None
+        model.generation_config.temperature = None
+        model.generation_config.top_p = None
+        model.generation_config.top_k = None
+        model.generation_config.repetition_penalty = None
 
     # Create text generation pipeline
     # Ensure temperature is valid and handle edge cases to prevent probability tensor errors
